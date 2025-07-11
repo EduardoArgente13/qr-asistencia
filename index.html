@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Registro de Asistencia</title>
+  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+  <style>
+    body {
+      font-family: sans-serif;
+      background: #f0f4f8;
+      text-align: center;
+      padding: 20px;
+    }
+    #reader {
+      width: 100%;
+      max-width: 400px;
+      margin: 0 auto;
+    }
+    #result {
+      margin-top: 20px;
+      font-size: 1.2em;
+      color: #333;
+    }
+  </style>
+</head>
+<body>
+  <h1>🕒 Registro de Asistencia</h1>
+  <p>Escanea tu código QR para registrar tu entrada.</p>
+  <div id="reader"></div>
+  <div id="result">Esperando escaneo...</div>
+
+  <script>
+    const resultEl = document.getElementById("result");
+
+    function onScanSuccess(decodedText, decodedResult) {
+      // Detener el escaneo temporalmente
+      html5QrcodeScanner.clear().then(() => {
+        resultEl.innerText = "⌛ Registrando asistencia...";
+
+        // Hacer fetch a la URL escaneada
+        fetch(decodedText)
+          .then(response => response.json())
+          .then(data => {
+            resultEl.innerText = `✅ ${data.message || "Asistencia registrada correctamente."}`;
+          })
+          .catch(error => {
+            console.error(error);
+            resultEl.innerText = "❌ Error al registrar asistencia.";
+          })
+          .finally(() => {
+            setTimeout(() => {
+              // Reiniciar escáner
+              window.location.reload();
+            }, 3000);
+          });
+      });
+    }
+
+    // Iniciar escáner
+    const html5QrcodeScanner = new Html5Qrcode("reader");
+    html5QrcodeScanner.start(
+      { facingMode: "user" }, // cámara frontal
+      {
+        fps: 10,
+        qrbox: 250
+      },
+      onScanSuccess
+    ).catch(err => {
+      console.error("No se pudo acceder a la cámara", err);
+      resultEl.innerText = "❌ Error: No se pudo iniciar la cámara.";
+    });
+  </script>
+</body>
+</html>
