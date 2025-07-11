@@ -3,73 +3,156 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Registro de Asistencia</title>
+  <title>Registro de Asistencia QR</title>
   <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
   <style>
     body {
-      font-family: sans-serif;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       background: #f0f4f8;
       text-align: center;
       padding: 20px;
+      color: #333;
+    }
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+      background: white;
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
     }
     #reader {
       width: 100%;
       max-width: 400px;
-      margin: 0 auto;
+      margin: 20px auto;
+      border: 2px solid #ddd;
+      border-radius: 8px;
+      overflow: hidden;
     }
     #result {
-      margin-top: 20px;
-      font-size: 1.2em;
-      color: #333;
+      margin: 20px 0;
+      padding: 15px;
+      border-radius: 5px;
+      font-size: 1.1em;
+      min-height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s ease;
+    }
+    .waiting {
+      background-color: #f8f9fa;
+      color: #6c757d;
+    }
+    .success {
+      background-color: #d4edda;
+      color: #155724;
+    }
+    .error {
+      background-color: #f8d7da;
+      color: #721c24;
+    }
+    .scanning {
+      background-color: #fff3cd;
+      color: #856404;
+    }
+    h1 {
+      color: #2c3e50;
+      margin-bottom: 10px;
+    }
+    p {
+      color: #7f8c8d;
+      margin-bottom: 20px;
+    }
+    button {
+      background-color: #3498db;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 1em;
+      margin-top: 10px;
+      transition: background-color 0.3s;
+    }
+    button:hover {
+      background-color: #2980b9;
     }
   </style>
 </head>
 <body>
-  <h1>🕒 Registro de Asistencia</h1>
-  <p>Escanea tu código QR para registrar tu entrada.</p>
-  <div id="reader"></div>
-  <div id="result">Esperando escaneo...</div>
+  <div class="container">
+    <h1>📅 Registro de Asistencia</h1>
+    <p>Escanea tu código QR para registrar tu entrada o salida</p>
+    
+    <div id="reader"></div>
+    
+    <div id="result" class="waiting">Acerca el código QR a la cámara...</div>
+    
+    <button id="restartBtn" style="display: none;">Escanear otro código</button>
+  </div>
 
   <script>
     const resultEl = document.getElementById("result");
+    const restartBtn = document.getElementById("restartBtn");
+    let html5QrcodeScanner;
+
+    function updateResult(message, type) {
+      resultEl.textContent = message;
+      resultEl.className = type;
+    }
 
     function onScanSuccess(decodedText, decodedResult) {
-      // Detener el escaneo temporalmente
-      html5QrcodeScanner.clear().then(() => {
-        resultEl.innerText = "⌛ Registrando asistencia...";
+      updateResult(`✅ Código QR leído: ${decodedText}`, "success");
+      
+      // Opcional: Mostrar el botón para reiniciar manualmente
+      showRestartButton();
+      
+      // Opcional: Reinicio automático después de 3 segundos
+      setTimeout(restartScanner, 3000);
+    }
 
-        // Hacer fetch a la URL escaneada
-        fetch(decodedText)
-          .then(response => response.json())
-          .then(data => {
-            resultEl.innerText = `✅ ${data.message || "Asistencia registrada correctamente."}`;
-          })
-          .catch(error => {
-            console.error(error);
-            resultEl.innerText = "❌ Error al registrar asistencia.";
-          })
-          .finally(() => {
-            setTimeout(() => {
-              // Reiniciar escáner
-              window.location.reload();
-            }, 3000);
-          });
+    function onScanFailure(error) {
+      console.error("Error en el escáner:", error);
+    }
+
+    function showRestartButton() {
+      restartBtn.style.display = "block";
+    }
+
+    function restartScanner() {
+      restartBtn.style.display = "none";
+      updateResult("Acerca el código QR a la cámara...", "waiting");
+      html5QrcodeScanner.resume();
+    }
+
+    // Configurar el escáner
+    function startScanner() {
+      html5QrcodeScanner = new Html5Qrcode("reader");
+      
+      const config = { 
+        fps: 10,
+        qrbox: 250,
+        supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA],
+        formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE]
+      };
+
+      html5QrcodeScanner.start(
+        { facingMode: "user" }, // Preferir cámara trasera
+        config,
+        onScanSuccess,
+        onScanFailure
+      ).catch(err => {
+        console.error("Error al iniciar cámara:", err);
+        updateResult("❌ Error: No se pudo acceder a la cámara. Asegúrate de permitir el acceso.", "error");
       });
     }
 
-    // Iniciar escáner
-    const html5QrcodeScanner = new Html5Qrcode("reader");
-    html5QrcodeScanner.start(
-      { facingMode: "user" }, // cámara frontal
-      {
-        fps: 10,
-        qrbox: 250
-      },
-      onScanSuccess
-    ).catch(err => {
-      console.error("No se pudo acceder a la cámara", err);
-      resultEl.innerText = "❌ Error: No se pudo iniciar la cámara.";
-    });
+    // Event listeners
+    restartBtn.addEventListener("click", restartScanner);
+    
+    // Iniciar el escáner cuando la página cargue
+    window.addEventListener("DOMContentLoaded", startScanner);
   </script>
 </body>
 </html>
