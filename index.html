@@ -54,13 +54,23 @@
 
   <script>
     const mensajeEl = document.getElementById("mensaje");
-    let escaner;
+    let html5QrcodeScanner; // Renombramos 'escaner' para mayor claridad
 
+    /**
+     * Muestra un mensaje en la interfaz de usuario con un tipo específico (estilo CSS).
+     * @param {string} texto - El mensaje a mostrar.
+     * @param {string} tipo - La clase CSS a aplicar ('waiting', 'success', 'error').
+     */
     function mostrarMensaje(texto, tipo) {
       mensajeEl.textContent = texto;
       mensajeEl.className = tipo;
     }
 
+    /**
+     * Realiza la llamada a la API para registrar la asistencia.
+     * @param {string} url - La URL del endpoint de la API.
+     * @returns {Promise<void>}
+     */
     async function registrarAsistencia(url) {
       mostrarMensaje("⏳ Registrando asistencia...", "waiting");
 
@@ -82,63 +92,60 @@
       }
     }
 
-    function iniciarEscaner() {
-      escaner = new Html5Qrcode("reader");
+    /**
+     * Inicia el escáner QR.
+     */
+    function iniciarEscaneoQR() {
+      // Si ya hay una instancia del escáner, la detenemos para evitar duplicados
+      if (html5QrcodeScanner) {
+        html5QrcodeScanner.stop().catch(err => console.warn("Error al detener el escáner existente:", err));
+      }
+      
+      html5QrcodeScanner = new Html5Qrcode("reader");
 
-      escaner.start(
+      html5QrcodeScanner.start(
         { facingMode: "environment" },
         { fps: 10, qrbox: 250 },
-        qrCodeMessage => {
+        async (qrCodeMessage) => { // Usamos async directamente en el callback
           console.log("QR escaneado:", qrCodeMessage);
 
           if (!qrCodeMessage.startsWith("https://api-sipe.com/preAssistance/")) {
             mostrarMensaje("⚠️ QR inválido. La URL no tiene el formato esperado.", "error");
-            return;
+            // No detenemos el escáner para permitir que el usuario intente con otro QR inmediatamente.
+            return; 
           }
 
-          // Detener escaneo mientras se registra
-          escaner.stop().then(() => {
-            registrarAsistencia(qrCodeMessage).then(() => {
-              // Esperar 5 segundos y reiniciar escaneo
-              setTimeout(() => {
-                mostrarMensaje("Acerca el código QR a la cámara...", "waiting");
-                escaner.start(
-                  { facingMode: "environment" },
-                  { fps: 10, qrbox: 250 },
-                  qrCodeMessage => {
-                    // Se llama recursivamente la misma función
-                    console.log("QR escaneado:", qrCodeMessage);
+          // Detener escaneo temporalmente mientras se procesa
+          try {
+            await html5QrcodeScanner.stop();
+            console.log("Escáner detenido para procesar QR.");
+          } catch (err) {
+            console.error("Error al detener el escáner:", err);
+            // Si no se puede detener, aún así intentamos registrar la asistencia.
+          }
 
-                    if (!qrCodeMessage.startsWith("https://api-sipe.com/preAssistance/")) {
-                      mostrarMensaje("⚠️ QR inválido. La URL no tiene el formato esperado.", "error");
-                      return;
-                    }
+          await registrarAsistencia(qrCodeMessage);
 
-                    escaner.stop().then(() => {
-                      registrarAsistencia(qrCodeMessage).then(() => {
-                        setTimeout(() => {
-                          mostrarMensaje("Acerca el código QR a la cámara...", "waiting");
-                          iniciarEscaner();
-                        }, 5000);
-                      });
-                    });
-                  },
-                  errorMessage => {
-                    console.warn("Error de escaneo:", errorMessage);
-                  }
-                );
-              }, 5000);
-            });
-          });
+          // Esperar un momento y reiniciar el escáner
+          setTimeout(() => {
+            mostrarMensaje("Acerca el código QR a la cámara...", "waiting");
+            iniciarEscaneoQR(); // Llamamos a la función principal para reiniciar el escáner de forma limpia
+          }, 5000); // Espera 5 segundos antes de reiniciar el escaneo
         },
-        errorMessage => {
-          console.warn("Error de escaneo:", errorMessage);
+        (errorMessage) => {
+          // Este callback se llama continuamente con errores de escaneo (ej. no se encuentra QR)
+          // Puedes decidir qué tan verboso quieres ser aquí.
+          // console.warn("Error de escaneo (no crítico):", errorMessage); 
         }
-      );
+      ).catch((err) => {
+        mostrarMensaje(`❌ Error al iniciar la cámara: ${err.message}. Asegúrate de dar permisos.`, "error");
+        console.error("Error al iniciar el escáner:", err);
+      });
     }
 
+    // Iniciar el escáner cuando el DOM esté completamente cargado
     window.addEventListener("DOMContentLoaded", () => {
-      iniciarEscaner();
+      iniciarEscaneoQR();
     });
   </script>
 
