@@ -33,13 +33,14 @@
 
     #message {
       margin-top: 20px;
-      padding: 14px;
+      padding: 16px;
       border-radius: 8px;
       font-size: 16px;
       width: 90%;
       max-width: 400px;
       text-align: center;
       display: none;
+      transition: opacity 0.4s ease-in-out;
     }
 
     .success {
@@ -53,6 +54,10 @@
       color: #991b1b;
       border: 1px solid #f87171;
     }
+
+    .fade-in {
+      opacity: 1;
+    }
   </style>
 </head>
 <body>
@@ -62,37 +67,32 @@
 
   <script>
     const messageDiv = document.getElementById("message");
-    let html5QrCode;
-
-    const showMessage = (htmlContent, isSuccess = true) => {
-      messageDiv.innerHTML = htmlContent;
-      messageDiv.className = isSuccess ? "success" : "error";
-      messageDiv.style.display = "block";
-    };
 
     const hideMessage = () => {
       messageDiv.style.display = "none";
     };
 
-    const resetForNextScan = () => {
-      setTimeout(() => {
-        hideMessage();
-      }, 3000);
+    const showMessage = (htmlContent, isSuccess = true) => {
+      messageDiv.innerHTML = htmlContent;
+      messageDiv.className = (isSuccess ? "success" : "error") + " fade-in";
+      messageDiv.style.display = "block";
     };
 
     const startScanner = () => {
-      html5QrCode = new Html5Qrcode("qr-reader");
+      const html5QrCode = new Html5Qrcode("qr-reader");
 
       html5QrCode.start(
         { facingMode: "environment" },
-        { fps: 12, qrbox: { width: 250, height: 250 } },
+        { fps: 10, qrbox: { width: 250, height: 250 } },
         async (decodedText, decodedResult) => {
           await html5QrCode.stop();
 
           if (!decodedText.startsWith("https://api-sipe.com/preAssistance/")) {
             showMessage("❌ QR inválido. URL no reconocida.", false);
-            resetForNextScan();
-            setTimeout(() => startScanner(), 1000);
+            setTimeout(() => {
+              hideMessage();
+              startScanner();
+            }, 3000);
             return;
           }
 
@@ -107,24 +107,34 @@
               const hora = data.checkIn?.split(".")[0] || new Date().toLocaleTimeString("es-MX");
 
               const mensajeHTML = `
-                ✅ Asistencia registrada<br/>
-                👤 ID: <strong>${employeeId}</strong><br/>
+                ✅ Asistencia registrada con éxito<br/>
+                👤 ID empleado: <strong>${employeeId}</strong><br/>
                 📅 Fecha: <strong>${fecha}</strong><br/>
-                🕒 Hora: <strong>${hora}</strong>
+                🕒 Hora de entrada: <strong>${hora}</strong>
               `;
 
               showMessage(mensajeHTML, true);
+
+              setTimeout(() => {
+                hideMessage();
+                startScanner();
+              }, 2000);
             } else {
               const errorData = await response.json();
               showMessage("❌ Error: " + (errorData.message || "No se pudo registrar"), false);
+              setTimeout(() => {
+                hideMessage();
+                startScanner();
+              }, 4000);
             }
+
           } catch (error) {
             showMessage("❌ Error de conexión con el servidor", false);
+            setTimeout(() => {
+              hideMessage();
+              startScanner();
+            }, 4000);
           }
-
-          // ✅ Reactivar cámara rápidamente sin esperar a ocultar mensaje
-          setTimeout(() => startScanner(), 1000); // 1 segundo para reactivar
-          resetForNextScan(); // Ocultar mensaje después
         }
       );
     };
