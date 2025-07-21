@@ -61,10 +61,35 @@
 <div id="result" class="message info">Esperando escaneo...</div>
 
 <script>
+  const resultDiv = document.getElementById("result");
   const updateResult = (text, status) => {
-    const resultDiv = document.getElementById("result");
     resultDiv.textContent = text;
     resultDiv.className = `message ${status}`;
+  };
+
+  let html5QrCode;
+  let scannerActive = false;
+
+  const startScanner = () => {
+    if (scannerActive) return;
+    scannerActive = true;
+    html5QrCode.start(
+      { facingMode: "environment" },
+      { fps: 10, qrbox: 250 },
+      onScanSuccess
+    ).catch(err => {
+      console.error("Error al iniciar escáner:", err);
+      updateResult("❌ No se pudo acceder a la cámara", "error");
+    });
+  };
+
+  const stopScanner = () => {
+    if (!scannerActive) return;
+    html5QrCode.stop().then(() => {
+      scannerActive = false;
+    }).catch(err => {
+      console.error("Error al detener escáner:", err);
+    });
   };
 
   const registerAssistance = async (employeeId) => {
@@ -72,7 +97,7 @@
     const pad = n => n.toString().padStart(2, '0');
 
     const checkIn = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
-    const checkOut = "17:45:00"; // default
+    const checkOut = "17:45:00";
     const isoDate = now.toISOString();
     const attendanceDate = isoDate.split("T")[0];
 
@@ -89,9 +114,7 @@
     try {
       const response = await fetch(`https://api-sipe.com/preAssistance/${employeeId}/checkin`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
       });
 
@@ -99,22 +122,33 @@
 
       if (!response.ok) {
         console.error("Error:", data);
-        updateResult("❌ Error al registrar asistencia: " + (data.details ? data.details[0] : "Verifica el servidor."), "error");
+        updateResult("❌ Error al registrar asistencia: " + (data.details ? data.details[0] : "Error de servidor."), "error");
       } else {
-        updateResult(`✅ Asistencia registrada para empleado ID ${employeeId}.`, "success");
+        updateResult(`✅ Asistencia registrada para el empleado ID ${employeeId}.`, "success");
       }
     } catch (error) {
-      console.error("Network error:", error);
-      updateResult("❌ No se pudo conectar con el servidor. Intenta más tarde.", "error");
+      console.error("Error de red:", error);
+      updateResult("❌ No se pudo conectar al servidor.", "error");
     }
+
+    // Esperar 4 segundos y reiniciar escáner
+    setTimeout(() => {
+      updateResult("📷 Esperando nuevo escaneo...", "info");
+      startScanner();
+    }, 4000);
   };
 
   const onScanSuccess = (decodedText) => {
+    stopScanner();  // Pausar para evitar doble escaneo
     const url = decodedText.trim();
-
     const match = url.match(/^https:\/\/api-sipe\.com\/preAssistance\/(\d+)\/checkin\/?$/);
+
     if (!match) {
-      updateResult("❌ QR inválido. La URL no tiene el formato esperado.", "error");
+      updateResult("❌ QR inválido. Formato incorrecto.", "error");
+      setTimeout(() => {
+        updateResult("📷 Escanea otro código...", "info");
+        startScanner();
+      }, 3000);
       return;
     }
 
@@ -124,13 +158,9 @@
     registerAssistance(employeeId);
   };
 
-  const html5QrCode = new Html5Qrcode("qr-reader");
-
-  html5QrCode.start(
-    { facingMode: "environment" },
-    { fps: 10, qrbox: 250 },
-    onScanSuccess
-  );
+  // Iniciar escáner al cargar
+  html5QrCode = new Html5Qrcode("qr-reader");
+  startScanner();
 </script>
 
 </body>
