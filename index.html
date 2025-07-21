@@ -54,7 +54,7 @@
 
   <script>
     const mensajeEl = document.getElementById("mensaje");
-    let html5QrcodeScanner; // Renombramos 'escaner' para mayor claridad
+    let html5QrcodeScanner; // Renombramos 'escaner' para mayor claridad y consistencia
 
     /**
      * Muestra un mensaje en la interfaz de usuario con un tipo específico (estilo CSS).
@@ -82,7 +82,8 @@
 
         if (!response.ok) {
           const textoError = await response.text();
-          mostrarMensaje(`❌ Error del servidor: ${response.status} - ${textoError}`, "error");
+          // Asegúrate de que el mensaje de error sea claro
+          mostrarMensaje(`❌ Error del servidor: ${response.status} - ${textoError || 'Respuesta vacía'}`, "error");
           return;
         }
 
@@ -96,17 +97,22 @@
      * Inicia el escáner QR.
      */
     function iniciarEscaneoQR() {
-      // Si ya hay una instancia del escáner, la detenemos para evitar duplicados
+      // Si ya existe una instancia del escáner, primero la detenemos para asegurar una reinicialización limpia
       if (html5QrcodeScanner) {
-        html5QrcodeScanner.stop().catch(err => console.warn("Error al detener el escáner existente:", err));
+        // Es importante usar .clear() si queremos limpiar completamente el div #reader
+        // y .stop() si solo queremos detener la cámara sin limpiar el UI
+        html5QrcodeScanner.clear().catch(err => console.warn("Error al limpiar el escáner existente:", err));
+        html5QrcodeScanner = null; // Reseteamos la variable para crear una nueva instancia
       }
       
+      // Creamos una nueva instancia de Html5Qrcode para asegurar que la cámara se inicialice de nuevo.
+      // Esto es crucial para que el UI del lector se muestre y la cámara se active.
       html5QrcodeScanner = new Html5Qrcode("reader");
 
       html5QrcodeScanner.start(
         { facingMode: "environment" },
         { fps: 10, qrbox: 250 },
-        async (qrCodeMessage) => { // Usamos async directamente en el callback
+        async (qrCodeMessage) => { 
           console.log("QR escaneado:", qrCodeMessage);
 
           if (!qrCodeMessage.startsWith("https://api-sipe.com/preAssistance/")) {
@@ -115,29 +121,32 @@
             return; 
           }
 
-          // Detener escaneo temporalmente mientras se procesa
+          // Detener escaneo temporalmente mientras se procesa el QR y la API
           try {
             await html5QrcodeScanner.stop();
             console.log("Escáner detenido para procesar QR.");
           } catch (err) {
-            console.error("Error al detener el escáner:", err);
-            // Si no se puede detener, aún así intentamos registrar la asistencia.
+            console.error("Error al detener el escáner después de escanear:", err);
+            // Continuamos el flujo incluso si no se detuvo perfectamente
           }
 
           await registrarAsistencia(qrCodeMessage);
 
           // Esperar un momento y reiniciar el escáner
+          // Usamos un setTimeout para dar tiempo al usuario a ver el mensaje y para que la API responda completamente
           setTimeout(() => {
             mostrarMensaje("Acerca el código QR a la cámara...", "waiting");
-            iniciarEscaneoQR(); // Llamamos a la función principal para reiniciar el escáner de forma limpia
+            // Llamamos a la función principal para reiniciar el ciclo de escaneo de forma limpia
+            iniciarEscaneoQR(); 
           }, 5000); // Espera 5 segundos antes de reiniciar el escaneo
         },
         (errorMessage) => {
-          // Este callback se llama continuamente con errores de escaneo (ej. no se encuentra QR)
-          // Puedes decidir qué tan verboso quieres ser aquí.
+          // Este callback se llama continuamente con errores de escaneo no críticos
+          // como la falta de un QR visible. No es necesario mostrarlo al usuario a menos que sea un error crítico.
           // console.warn("Error de escaneo (no crítico):", errorMessage); 
         }
       ).catch((err) => {
+        // Este catch maneja errores al *iniciar* la cámara (ej. permisos denegados, cámara no encontrada)
         mostrarMensaje(`❌ Error al iniciar la cámara: ${err.message}. Asegúrate de dar permisos.`, "error");
         console.error("Error al iniciar el escáner:", err);
       });
