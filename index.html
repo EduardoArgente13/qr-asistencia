@@ -40,61 +40,24 @@
       justify-content: center;
       transition: all 0.3s ease;
     }
-    .waiting {
-      background-color: #f8f9fa;
-      color: #6c757d;
-    }
-    .success {
-      background-color: #d4edda;
-      color: #155724;
-    }
-    .error {
-      background-color: #f8d7da;
-      color: #721c24;
-    }
-    .scanning {
-      background-color: #fff3cd;
-      color: #856404;
-    }
-    h1 {
-      color: #2c3e50;
-      margin-bottom: 10px;
-    }
-    p {
-      color: #7f8c8d;
-      margin-bottom: 20px;
-    }
-    button {
-      background-color: #3498db;
-      color: white;
-      border: none;
-      padding: 10px 20px;
-      border-radius: 5px;
-      cursor: pointer;
-      font-size: 1em;
-      margin-top: 10px;
-      transition: background-color 0.3s;
-    }
-    button:hover {
-      background-color: #2980b9;
-    }
+    .waiting { background-color: #f8f9fa; color: #6c757d; }
+    .success { background-color: #d4edda; color: #155724; }
+    .error { background-color: #f8d7da; color: #721c24; }
+    h1 { color: #2c3e50; margin-bottom: 10px; }
+    p { color: #7f8c8d; margin-bottom: 20px; }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>📅 Registro de Asistencia</h1>
-    <p>Escanea tu código QR para registrar tu entrada o salida</p>
+    <p>Escanea tu código QR para registrar tu entrada</p>
     
     <div id="reader"></div>
-    
     <div id="result" class="waiting">Acerca el código QR a la cámara...</div>
-    
-    <button id="restartBtn" style="display: none;">Escanear otro código</button>
   </div>
 
   <script>
     const resultEl = document.getElementById("result");
-    const restartBtn = document.getElementById("restartBtn");
     let html5QrcodeScanner;
 
     function updateResult(message, type) {
@@ -105,7 +68,6 @@
     function onScanSuccess(decodedText, decodedResult) {
       const url = decodedText.trim();
 
-      // Acepta con o sin slash final
       const match = url.match(/\/preAssistance\/(\d+)\/checkin\/?/);
       if (!match) {
         updateResult("❌ QR inválido. La URL no tiene el formato esperado.", "error");
@@ -113,11 +75,10 @@
       }
 
       const employeeId = parseInt(match[1], 10);
-
       const now = new Date();
       const pad = n => n.toString().padStart(2, '0');
       const checkIn = `${pad(now.getHours())}:${pad(now.getMinutes())}:00`;
-      const checkOut = "17:45:00";
+      const checkOut = "17:45:00"; // o cámbialo por hora actual si quieres
       const isoDate = now.toISOString();
 
       const payload = {
@@ -133,7 +94,7 @@
         method: "POST",
         headers: {
           "Content-Type": "application/json"
-          // "Authorization": "Bearer TU_TOKEN" // ← si lo necesitas, lo agregamos
+          // Agrega aquí Authorization si es necesario
         },
         body: JSON.stringify(payload)
       })
@@ -143,55 +104,45 @@
         })
         .then(data => {
           updateResult(`✅ Asistencia registrada para empleado #${employeeId}`, "success");
-          showRestartButton();
-          setTimeout(restartScanner, 3000);
+          setTimeout(() => {
+            updateResult("Acerca el código QR a la cámara...", "waiting");
+            html5QrcodeScanner.resume();
+          }, 3000);
         })
         .catch(err => {
           console.error(err);
           updateResult("❌ Fallo al registrar la asistencia.", "error");
+          setTimeout(() => {
+            updateResult("Acerca el código QR a la cámara...", "waiting");
+            html5QrcodeScanner.resume();
+          }, 3000);
         });
     }
 
     function onScanFailure(error) {
-      console.error("Error en el escáner:", error);
+      // No mostrar nada si falla
     }
 
-    function showRestartButton() {
-      restartBtn.style.display = "block";
-    }
-
-    function restartScanner() {
-      restartBtn.style.display = "none";
-      updateResult("Acerca el código QR a la cámara...", "waiting");
-      html5QrcodeScanner.resume();
-    }
-
-    // Configurar el escáner
     function startScanner() {
       html5QrcodeScanner = new Html5Qrcode("reader");
-      
-      const config = { 
+
+      const config = {
         fps: 10,
         qrbox: 250,
-        supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA],
-        formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE]
+        supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA]
       };
 
       html5QrcodeScanner.start(
-        { facingMode: "environment" }, // Preferir cámara trasera
+        { facingMode: "environment" },
         config,
         onScanSuccess,
         onScanFailure
       ).catch(err => {
         console.error("Error al iniciar cámara:", err);
-        updateResult("❌ Error: No se pudo acceder a la cámara. Asegúrate de permitir el acceso.", "error");
+        updateResult("❌ No se pudo acceder a la cámara", "error");
       });
     }
 
-    // Event listeners
-    restartBtn.addEventListener("click", restartScanner);
-    
-    // Iniciar el escáner cuando la página cargue
     window.addEventListener("DOMContentLoaded", startScanner);
   </script>
 </body>
