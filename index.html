@@ -6,58 +6,107 @@
   <title>Registro de Asistencia</title>
   <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
   <style>
+    :root {
+      --primary: #1d4ed8;
+      --bg: #f9fafb;
+      --text: #111827;
+      --success: #10b981;
+      --error: #ef4444;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
     body {
       font-family: 'Segoe UI', sans-serif;
-      background: #f3f4f6;
+      margin: 0;
+      padding: 0;
+      background-color: var(--bg);
+      color: var(--text);
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: start;
-      height: 100vh;
-      margin: 0;
-      padding: 2rem;
-      color: #111827;
+      min-height: 100vh;
     }
 
-    h1 {
-      margin-bottom: 1rem;
-      font-size: 1.8rem;
+    header {
+      padding: 2rem 1rem 1rem;
       text-align: center;
+    }
+
+    header h1 {
+      font-size: 2rem;
+      color: var(--primary);
+      margin-bottom: 0.25rem;
+    }
+
+    header p {
+      color: #6b7280;
+      font-size: 0.95rem;
+      margin: 0;
+    }
+
+    .card {
+      background: white;
+      padding: 2rem;
+      border-radius: 16px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+      margin: 1rem;
+      width: 90%;
+      max-width: 420px;
     }
 
     #qr-reader {
       width: 100%;
-      max-width: 400px;
-      margin: 1rem 0;
       border-radius: 12px;
       overflow: hidden;
-      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
     }
 
     #message {
-      margin-top: 1rem;
-      padding: 0.75rem 1.25rem;
-      border-radius: 8px;
+      margin-top: 1.5rem;
+      padding: 1rem;
+      border-radius: 12px;
       font-weight: bold;
       text-align: center;
       display: none;
     }
 
     .success {
-      background-color: #d1fae5;
-      color: #065f46;
+      background-color: #ecfdf5;
+      color: var(--success);
+      border: 1px solid var(--success);
     }
 
     .error {
-      background-color: #fee2e2;
-      color: #991b1b;
+      background-color: #fef2f2;
+      color: var(--error);
+      border: 1px solid var(--error);
+    }
+
+    footer {
+      margin-top: auto;
+      padding: 1rem;
+      font-size: 0.8rem;
+      color: #9ca3af;
+      text-align: center;
     }
   </style>
 </head>
 <body>
-  <h1>Escanea tu código QR</h1>
-  <div id="qr-reader"></div>
-  <div id="message"></div>
+  <header>
+    <h1>Escanea tu código QR</h1>
+    <p>Registra tu asistencia rápidamente</p>
+  </header>
+
+  <div class="card">
+    <div id="qr-reader"></div>
+    <div id="message"></div>
+  </div>
+
+  <footer>
+    &copy; 2025 Sistema SIPE – Registro de Asistencia
+  </footer>
 
   <script>
     const qrRegion = document.getElementById("qr-reader");
@@ -83,15 +132,13 @@
           qrbox: { width: 250, height: 250 }
         },
         async (decodedText, decodedResult) => {
-          // Detener escaneo
           await html5QrCode.stop();
 
-          // Validar que sea URL válida esperada
           if (!decodedText.startsWith("https://api-sipe.com/preAssistance/")) {
             showMessage("QR inválido. URL no reconocida.", false);
             setTimeout(() => {
               hideMessage();
-              startScanner(); // Reintentar
+              startScanner();
             }, 3000);
             return;
           }
@@ -106,37 +153,26 @@
 
             if (response.ok) {
               const data = await response.json();
-              showMessage("✅ Asistencia registrada con éxito");
-
-              // Reiniciar escaneo después de 4 segundos
-              setTimeout(() => {
-                hideMessage();
-                startScanner();
-              }, 4000);
+              showMessage("✅ Asistencia registrada con éxito", true);
             } else {
               const errorData = await response.json();
-              showMessage(`Error: ${errorData.message || 'No se pudo registrar'}`, false);
-              setTimeout(() => {
-                hideMessage();
-                startScanner();
-              }, 4000);
+              showMessage(`❌ ${errorData.message || "Error al registrar"}`, false);
             }
-
           } catch (error) {
-            showMessage("Error de conexión con el servidor", false);
-            setTimeout(() => {
-              hideMessage();
-              startScanner();
-            }, 4000);
+            showMessage("❌ Error de conexión con el servidor", false);
           }
+
+          setTimeout(() => {
+            hideMessage();
+            startScanner();
+          }, 4000);
         },
         (errorMessage) => {
-          // Puedes loguear errores si quieres: console.warn(errorMessage);
+          // Errores silenciosos del escáner
         }
       );
     };
 
-    // Iniciar al cargar
     startScanner();
   </script>
 </body>
