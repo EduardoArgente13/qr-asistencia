@@ -6,120 +6,76 @@
   <title>Registro de Asistencia</title>
   <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
   <style>
-    :root {
-      --primary: #1d4ed8;
-      --bg: #f9fafb;
-      --text: #111827;
-      --success: #10b981;
-      --error: #ef4444;
-    }
-
-    * {
-      box-sizing: border-box;
-    }
-
     body {
       font-family: 'Segoe UI', sans-serif;
+      background-color: #f3f4f6;
       margin: 0;
       padding: 0;
-      background-color: var(--bg);
-      color: var(--text);
       display: flex;
       flex-direction: column;
       align-items: center;
       min-height: 100vh;
     }
 
-    header {
-      padding: 2rem 1rem 1rem;
-      text-align: center;
-    }
-
-    header h1 {
-      font-size: 2rem;
-      color: var(--primary);
-      margin-bottom: 0.25rem;
-    }
-
-    header p {
-      color: #6b7280;
-      font-size: 0.95rem;
-      margin: 0;
-    }
-
-    .card {
-      background: white;
-      padding: 2rem;
-      border-radius: 16px;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
-      margin: 1rem;
-      width: 90%;
-      max-width: 420px;
+    h1 {
+      color: #111827;
+      margin-top: 30px;
+      font-size: 28px;
     }
 
     #qr-reader {
-      width: 100%;
-      border-radius: 12px;
+      width: 320px;
+      margin-top: 20px;
+      border-radius: 8px;
       overflow: hidden;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
     }
 
     #message {
-      margin-top: 1.5rem;
-      padding: 1rem;
-      border-radius: 12px;
-      font-weight: bold;
+      margin-top: 20px;
+      padding: 16px;
+      border-radius: 8px;
+      font-size: 16px;
+      width: 90%;
+      max-width: 400px;
       text-align: center;
       display: none;
+      transition: opacity 0.4s ease-in-out;
     }
 
     .success {
-      background-color: #ecfdf5;
-      color: var(--success);
-      border: 1px solid var(--success);
+      background-color: #d1fae5;
+      color: #065f46;
+      border: 1px solid #10b981;
     }
 
     .error {
-      background-color: #fef2f2;
-      color: var(--error);
-      border: 1px solid var(--error);
+      background-color: #fee2e2;
+      color: #991b1b;
+      border: 1px solid #f87171;
     }
 
-    footer {
-      margin-top: auto;
-      padding: 1rem;
-      font-size: 0.8rem;
-      color: #9ca3af;
-      text-align: center;
+    .fade-in {
+      opacity: 1;
     }
   </style>
 </head>
 <body>
-  <header>
-    <h1>Escanea tu código QR</h1>
-    <p>Registra tu asistencia rápidamente</p>
-  </header>
-
-  <div class="card">
-    <div id="qr-reader"></div>
-    <div id="message"></div>
-  </div>
-
-  <footer>
-    &copy; 2025 Sistema SIPE – Registro de Asistencia
-  </footer>
+  <h1>Registro de Asistencia</h1>
+  <div id="qr-reader"></div>
+  <div id="message"></div>
 
   <script>
-    const qrRegion = document.getElementById("qr-reader");
     const messageDiv = document.getElementById("message");
-
-    const showMessage = (msg, isSuccess = true) => {
-      messageDiv.textContent = msg;
-      messageDiv.className = isSuccess ? "success" : "error";
-      messageDiv.style.display = "block";
-    };
 
     const hideMessage = () => {
       messageDiv.style.display = "none";
+    };
+
+    const showMessage = (htmlContent, isSuccess = true) => {
+      messageDiv.innerHTML = htmlContent;
+      messageDiv.className = (isSuccess ? "success" : "error") + " fade-in";
+      messageDiv.style.display = "block";
     };
 
     const startScanner = () => {
@@ -127,15 +83,12 @@
 
       html5QrCode.start(
         { facingMode: "environment" },
-        {
-          fps: 10,
-          qrbox: { width: 250, height: 250 }
-        },
+        { fps: 10, qrbox: { width: 250, height: 250 } },
         async (decodedText, decodedResult) => {
           await html5QrCode.stop();
 
           if (!decodedText.startsWith("https://api-sipe.com/preAssistance/")) {
-            showMessage("QR inválido. URL no reconocida.", false);
+            showMessage("❌ QR inválido. URL no reconocida.", false);
             setTimeout(() => {
               hideMessage();
               startScanner();
@@ -144,31 +97,44 @@
           }
 
           try {
-            const response = await fetch(decodedText, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json"
-              }
-            });
+            const response = await fetch(decodedText, { method: "POST" });
 
             if (response.ok) {
               const data = await response.json();
-              showMessage("✅ Asistencia registrada con éxito", true);
+
+              const employeeId = data.employeeId || "Desconocido";
+              const fecha = data.date || new Date().toLocaleDateString("es-MX");
+              const hora = data.checkIn?.split(".")[0] || new Date().toLocaleTimeString("es-MX");
+
+              const mensajeHTML = `
+                ✅ Asistencia registrada con éxito<br/>
+                👤 ID empleado: <strong>${employeeId}</strong><br/>
+                📅 Fecha: <strong>${fecha}</strong><br/>
+                🕒 Hora de entrada: <strong>${hora}</strong>
+              `;
+
+              showMessage(mensajeHTML, true);
+
+              setTimeout(() => {
+                hideMessage();
+                startScanner();
+              }, 4000);
             } else {
               const errorData = await response.json();
-              showMessage(`❌ ${errorData.message || "Error al registrar"}`, false);
+              showMessage("❌ Error: " + (errorData.message || "No se pudo registrar"), false);
+              setTimeout(() => {
+                hideMessage();
+                startScanner();
+              }, 4000);
             }
+
           } catch (error) {
             showMessage("❌ Error de conexión con el servidor", false);
+            setTimeout(() => {
+              hideMessage();
+              startScanner();
+            }, 4000);
           }
-
-          setTimeout(() => {
-            hideMessage();
-            startScanner();
-          }, 4000);
-        },
-        (errorMessage) => {
-          // Errores silenciosos del escáner
         }
       );
     };
