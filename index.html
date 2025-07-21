@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Registro de Asistencia</title>
+  <title>Registro de Asistencia con Proxy CORS</title>
   <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
   <style>
     body {
@@ -43,6 +43,8 @@
   <div id="mensaje"></div>
 
   <script>
+    const proxyUrl = "https://cors-anywhere.herokuapp.com/";
+
     function mostrarMensaje(texto, tipo) {
       const mensaje = document.getElementById("mensaje");
       mensaje.innerText = texto;
@@ -52,8 +54,11 @@
     async function registrarAsistencia(url) {
       mostrarMensaje("⏳ Registrando asistencia...", "");
 
+      // Agregar proxy al inicio de la URL
+      const proxiedUrl = proxyUrl + url;
+
       try {
-        const response = await fetch(url, {
+        const response = await fetch(proxiedUrl, {
           method: "POST",
           headers: {
             "Content-Type": "application/json"
@@ -86,7 +91,6 @@
       qrCodeMessage => {
         console.log("QR escaneado:", qrCodeMessage);
 
-        // ⚠️ Opcional: Validación de URL esperada
         if (!qrCodeMessage.startsWith("https://api-sipe.com/preAssistance/")) {
           mostrarMensaje("⚠️ QR inválido. La URL no tiene el formato esperado.", "error");
           return;
@@ -94,7 +98,6 @@
 
         registrarAsistencia(qrCodeMessage);
 
-        // Detener momentáneamente para no enviar múltiples veces
         scanner.stop().then(() => {
           console.log("Escaneo detenido temporalmente.");
           setTimeout(() => {
@@ -102,7 +105,7 @@
             scanner.start({ facingMode: "environment" }, config, qrCodeMessage => {
               registrarAsistencia(qrCodeMessage);
             });
-          }, 5000); // Espera 5 segundos antes de reiniciar
+          }, 5000);
         });
       },
       errorMessage => {
