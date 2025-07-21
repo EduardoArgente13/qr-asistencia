@@ -2,29 +2,37 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Registro de Asistencia con Proxy CORS</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Registro de Asistencia QR</title>
   <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
   <style>
     body {
-      font-family: Arial, sans-serif;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #f0f4f8;
+      color: #333;
       text-align: center;
-      padding: 1rem;
-      background: #f4f4f4;
+      padding: 20px;
     }
     #reader {
+      margin: 20px auto;
       width: 100%;
       max-width: 400px;
-      margin: auto;
-      border: 2px solid #ccc;
-      border-radius: 10px;
-      background: #fff;
+      border: 2px solid #ddd;
+      border-radius: 8px;
+      overflow: hidden;
+      background: white;
     }
     #mensaje {
-      margin-top: 1rem;
-      padding: 1rem;
-      border-radius: 8px;
-      font-size: 1.1rem;
+      margin-top: 20px;
+      padding: 15px;
+      border-radius: 5px;
+      font-size: 1.1em;
+      min-height: 50px;
+      transition: all 0.3s ease;
+    }
+    .waiting {
+      background-color: #f8f9fa;
+      color: #6c757d;
     }
     .success {
       background-color: #d4edda;
@@ -38,80 +46,100 @@
 </head>
 <body>
 
-  <h2>Escanea tu código QR</h2>
+  <h1>📅 Registro de Asistencia</h1>
+  <p>Escanea tu código QR para registrar tu entrada o salida</p>
+
   <div id="reader"></div>
-  <div id="mensaje"></div>
+  <div id="mensaje" class="waiting">Acerca el código QR a la cámara...</div>
 
   <script>
-    const proxyUrl = "https://cors-anywhere.herokuapp.com/";
+    const mensajeEl = document.getElementById("mensaje");
+    let escaner;
 
     function mostrarMensaje(texto, tipo) {
-      const mensaje = document.getElementById("mensaje");
-      mensaje.innerText = texto;
-      mensaje.className = tipo;
+      mensajeEl.textContent = texto;
+      mensajeEl.className = tipo;
     }
 
     async function registrarAsistencia(url) {
-      mostrarMensaje("⏳ Registrando asistencia...", "");
-
-      // Agregar proxy al inicio de la URL
-      const proxiedUrl = proxyUrl + url;
+      mostrarMensaje("⏳ Registrando asistencia...", "waiting");
 
       try {
-        const response = await fetch(proxiedUrl, {
+        const response = await fetch(url, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          }
+          headers: { "Content-Type": "application/json" }
         });
 
         if (!response.ok) {
-          const errorText = await response.text();
-          mostrarMensaje(`❌ Error del servidor: ${response.status} - ${errorText}`, "error");
+          const textoError = await response.text();
+          mostrarMensaje(`❌ Error del servidor: ${response.status} - ${textoError}`, "error");
           return;
         }
 
-        const result = await response.json();
-        console.log("Respuesta del servidor:", result);
         mostrarMensaje("✅ Asistencia registrada correctamente", "success");
-
       } catch (error) {
-        console.error("Error de red:", error);
         mostrarMensaje(`❌ No se pudo conectar al servidor: ${error.message}`, "error");
       }
     }
 
-    const scanner = new Html5Qrcode("reader");
+    function iniciarEscaner() {
+      escaner = new Html5Qrcode("reader");
 
-    const config = { fps: 10, qrbox: 250 };
+      escaner.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: 250 },
+        qrCodeMessage => {
+          console.log("QR escaneado:", qrCodeMessage);
 
-    scanner.start(
-      { facingMode: "environment" },
-      config,
-      qrCodeMessage => {
-        console.log("QR escaneado:", qrCodeMessage);
+          if (!qrCodeMessage.startsWith("https://api-sipe.com/preAssistance/")) {
+            mostrarMensaje("⚠️ QR inválido. La URL no tiene el formato esperado.", "error");
+            return;
+          }
 
-        if (!qrCodeMessage.startsWith("https://api-sipe.com/preAssistance/")) {
-          mostrarMensaje("⚠️ QR inválido. La URL no tiene el formato esperado.", "error");
-          return;
-        }
+          // Detener escaneo mientras se registra
+          escaner.stop().then(() => {
+            registrarAsistencia(qrCodeMessage).then(() => {
+              // Esperar 5 segundos y reiniciar escaneo
+              setTimeout(() => {
+                mostrarMensaje("Acerca el código QR a la cámara...", "waiting");
+                escaner.start(
+                  { facingMode: "environment" },
+                  { fps: 10, qrbox: 250 },
+                  qrCodeMessage => {
+                    // Se llama recursivamente la misma función
+                    console.log("QR escaneado:", qrCodeMessage);
 
-        registrarAsistencia(qrCodeMessage);
+                    if (!qrCodeMessage.startsWith("https://api-sipe.com/preAssistance/")) {
+                      mostrarMensaje("⚠️ QR inválido. La URL no tiene el formato esperado.", "error");
+                      return;
+                    }
 
-        scanner.stop().then(() => {
-          console.log("Escaneo detenido temporalmente.");
-          setTimeout(() => {
-            mostrarMensaje("Puedes escanear otro código.", "");
-            scanner.start({ facingMode: "environment" }, config, qrCodeMessage => {
-              registrarAsistencia(qrCodeMessage);
+                    escaner.stop().then(() => {
+                      registrarAsistencia(qrCodeMessage).then(() => {
+                        setTimeout(() => {
+                          mostrarMensaje("Acerca el código QR a la cámara...", "waiting");
+                          iniciarEscaner();
+                        }, 5000);
+                      });
+                    });
+                  },
+                  errorMessage => {
+                    console.warn("Error de escaneo:", errorMessage);
+                  }
+                );
+              }, 5000);
             });
-          }, 5000);
-        });
-      },
-      errorMessage => {
-        console.warn("Error de escaneo:", errorMessage);
-      }
-    );
+          });
+        },
+        errorMessage => {
+          console.warn("Error de escaneo:", errorMessage);
+        }
+      );
+    }
+
+    window.addEventListener("DOMContentLoaded", () => {
+      iniciarEscaner();
+    });
   </script>
 
 </body>
