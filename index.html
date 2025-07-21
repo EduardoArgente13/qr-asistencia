@@ -7,161 +7,109 @@
   <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
   <style>
     body {
-      font-family: 'Segoe UI', sans-serif;
-      background: #f3f4f6;
-      color: #111827;
+      font-family: Arial, sans-serif;
       text-align: center;
-      padding: 2rem;
+      padding: 1rem;
+      background: #f4f4f4;
     }
-
-    h1 {
-      color: #1f2937;
+    #reader {
+      width: 100%;
+      max-width: 400px;
+      margin: auto;
+      border: 2px solid #ccc;
+      border-radius: 10px;
+      background: #fff;
     }
-
-    #qr-reader {
-      width: 300px;
-      margin: 2rem auto;
-      border: 4px solid #e5e7eb;
-      border-radius: 12px;
-      background: white;
-      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-    }
-
-    .message {
-      margin-top: 1.5rem;
-      font-size: 1.1rem;
-      font-weight: 500;
+    #mensaje {
+      margin-top: 1rem;
       padding: 1rem;
       border-radius: 8px;
-      width: 80%;
-      margin-left: auto;
-      margin-right: auto;
+      font-size: 1.1rem;
     }
-
     .success {
-      background: #d1fae5;
-      color: #065f46;
+      background-color: #d4edda;
+      color: #155724;
     }
-
     .error {
-      background: #fee2e2;
-      color: #991b1b;
-    }
-
-    .info {
-      background: #e0f2fe;
-      color: #0369a1;
+      background-color: #f8d7da;
+      color: #721c24;
     }
   </style>
 </head>
 <body>
 
-<h1>Escanea tu código para registrar asistencia</h1>
-<div id="qr-reader"></div>
-<div id="result" class="message info">Esperando escaneo...</div>
+  <h2>Escanea tu código QR</h2>
+  <div id="reader"></div>
+  <div id="mensaje"></div>
 
-<script>
-  const resultDiv = document.getElementById("result");
-  const updateResult = (text, status) => {
-    resultDiv.textContent = text;
-    resultDiv.className = `message ${status}`;
-  };
+  <script>
+    function mostrarMensaje(texto, tipo) {
+      const mensaje = document.getElementById("mensaje");
+      mensaje.innerText = texto;
+      mensaje.className = tipo;
+    }
 
-  let html5QrCode;
-  let scannerActive = false;
+    async function registrarAsistencia(url) {
+      mostrarMensaje("⏳ Registrando asistencia...", "");
 
-  const startScanner = () => {
-    if (scannerActive) return;
-    scannerActive = true;
-    html5QrCode.start(
-      { facingMode: "environment" },
-      { fps: 10, qrbox: 250 },
-      onScanSuccess
-    ).catch(err => {
-      console.error("Error al iniciar escáner:", err);
-      updateResult("❌ No se pudo acceder a la cámara", "error");
-    });
-  };
+      try {
+        const response = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          }
+        });
 
-  const stopScanner = () => {
-    if (!scannerActive) return;
-    html5QrCode.stop().then(() => {
-      scannerActive = false;
-    }).catch(err => {
-      console.error("Error al detener escáner:", err);
-    });
-  };
+        if (!response.ok) {
+          const errorText = await response.text();
+          mostrarMensaje(`❌ Error del servidor: ${response.status} - ${errorText}`, "error");
+          return;
+        }
 
-  const registerAssistance = async (employeeId) => {
-    const now = new Date();
-    const pad = n => n.toString().padStart(2, '0');
+        const result = await response.json();
+        console.log("Respuesta del servidor:", result);
+        mostrarMensaje("✅ Asistencia registrada correctamente", "success");
 
-    const checkIn = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
-    const checkOut = "17:45:00";
-    const isoDate = now.toISOString();
-    const attendanceDate = isoDate.split("T")[0];
-
-    const payload = {
-      employee: { id: employeeId },
-      checkIn,
-      checkOut,
-      status: "PRESENT",
-      attendanceDate,
-      createdAt: isoDate,
-      updatedAt: isoDate
-    };
-
-    try {
-      const response = await fetch(`https://api-sipe.com/preAssistance/${employeeId}/checkin`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        console.error("Error:", data);
-        updateResult("❌ Error al registrar asistencia: " + (data.details ? data.details[0] : "Error de servidor."), "error");
-      } else {
-        updateResult(`✅ Asistencia registrada para el empleado ID ${employeeId}.`, "success");
+      } catch (error) {
+        console.error("Error de red:", error);
+        mostrarMensaje(`❌ No se pudo conectar al servidor: ${error.message}`, "error");
       }
-    } catch (error) {
-      console.error("Error de red:", error);
-      updateResult("❌ No se pudo conectar al servidor.", "error");
     }
 
-    // Esperar 4 segundos y reiniciar escáner
-    setTimeout(() => {
-      updateResult("📷 Esperando nuevo escaneo...", "info");
-      startScanner();
-    }, 4000);
-  };
+    const scanner = new Html5Qrcode("reader");
 
-  const onScanSuccess = (decodedText) => {
-    stopScanner();  // Pausar para evitar doble escaneo
-    const url = decodedText.trim();
-    const match = url.match(/^https:\/\/api-sipe\.com\/preAssistance\/(\d+)\/checkin\/?$/);
+    const config = { fps: 10, qrbox: 250 };
 
-    if (!match) {
-      updateResult("❌ QR inválido. Formato incorrecto.", "error");
-      setTimeout(() => {
-        updateResult("📷 Escanea otro código...", "info");
-        startScanner();
-      }, 3000);
-      return;
-    }
+    scanner.start(
+      { facingMode: "environment" },
+      config,
+      qrCodeMessage => {
+        console.log("QR escaneado:", qrCodeMessage);
 
-    const employeeId = parseInt(match[1], 10);
-    updateResult("⏳ Registrando asistencia...", "info");
+        // ⚠️ Opcional: Validación de URL esperada
+        if (!qrCodeMessage.startsWith("https://api-sipe.com/preAssistance/")) {
+          mostrarMensaje("⚠️ QR inválido. La URL no tiene el formato esperado.", "error");
+          return;
+        }
 
-    registerAssistance(employeeId);
-  };
+        registrarAsistencia(qrCodeMessage);
 
-  // Iniciar escáner al cargar
-  html5QrCode = new Html5Qrcode("qr-reader");
-  startScanner();
-</script>
+        // Detener momentáneamente para no enviar múltiples veces
+        scanner.stop().then(() => {
+          console.log("Escaneo detenido temporalmente.");
+          setTimeout(() => {
+            mostrarMensaje("Puedes escanear otro código.", "");
+            scanner.start({ facingMode: "environment" }, config, qrCodeMessage => {
+              registrarAsistencia(qrCodeMessage);
+            });
+          }, 5000); // Espera 5 segundos antes de reiniciar
+        });
+      },
+      errorMessage => {
+        console.warn("Error de escaneo:", errorMessage);
+      }
+    );
+  </script>
 
 </body>
 </html>
