@@ -105,7 +105,8 @@
     function onScanSuccess(decodedText, decodedResult) {
       const url = decodedText.trim();
 
-      const match = url.match(/\/preAssistance\/(\d+)\/checkin$/);
+      // Acepta con o sin slash final
+      const match = url.match(/\/preAssistance\/(\d+)\/checkin\/?/);
       if (!match) {
         updateResult("❌ QR inválido. La URL no tiene el formato esperado.", "error");
         return;
