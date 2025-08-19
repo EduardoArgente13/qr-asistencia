@@ -6,142 +6,262 @@
   <title>Registro de Asistencia</title>
   <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
   <style>
+    :root{
+      --bg:#0d0d0d;
+      --fg:#f3f4f6;
+      --card:#1f2937;
+      --shadow:rgba(255,255,255,0.08);
+      --ok-bg:#065f46; --ok-fg:#d1fae5; --ok-bd:#10b981;
+      --err-bg:#7f1d1d; --err-fg:#fee2e2; --err-bd:#f87171;
+    }
+    *{box-sizing:border-box}
     body {
-      font-family: 'Segoe UI', sans-serif;
-      background-color: #0d0d0d; /* Fondo negro */
-      color: #f3f4f6; /* Texto claro */
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background-color: var(--bg);
+      color: var(--fg);
       margin: 0;
-      padding: 0;
+      padding: 0 16px 40px;
       display: flex;
       flex-direction: column;
       align-items: center;
       min-height: 100vh;
+      -webkit-tap-highlight-color: transparent;
     }
-
     h1 {
-      color: #f9fafb; /* Blanco casi puro */
-      margin-top: 30px;
+      color: #f9fafb;
+      margin: 24px 0 8px;
       font-size: 28px;
+      text-align:center;
     }
 
-    #qr-reader {
+    .toolbar{
+      display:flex; gap:8px; flex-wrap:wrap; justify-content:center;
+      margin-top: 8px;
+    }
+    button{
+      background:#111827; color:#e5e7eb; border:1px solid #374151;
+      padding:10px 14px; border-radius:10px; cursor:pointer;
+      box-shadow:0 2px 8px var(--shadow);
+      transition:transform .06s ease, background .2s ease, border-color .2s ease;
+    }
+    button:active{ transform:scale(0.98) }
+    button:hover{ background:#0b1220; border-color:#4b5563 }
+
+    #qr-wrap{
       width: 320px;
-      margin-top: 20px;
-      border-radius: 8px;
+      margin-top: 16px;
+      border-radius: 12px;
       overflow: hidden;
-      box-shadow: 0 4px 12px rgba(255,255,255,0.1); /* sombra clara */
-      background-color: #1f2937; /* gris oscuro */
+      box-shadow: 0 8px 24px var(--shadow);
+      background-color: var(--card);
+      /* el movimiento anti burn-in aplica sobre este contenedor */
+      will-change: transform;
+    }
+    #qr-reader{ width: 100%; height: 320px }
+
+    /* Overlay sutil para evitar zonas estáticas con alto contraste */
+    #anti-burn-overlay{
+      position:absolute; inset:0; pointer-events:none; opacity:.08;
+      background: radial-gradient(120% 120% at 0% 0%, #fff 0%, transparent 60%) ,
+                  radial-gradient(120% 120% at 100% 100%, #fff 0%, transparent 60%);
+      mix-blend-mode: soft-light;
+      transition: opacity .5s ease;
+    }
+    .overlay-hidden #anti-burn-overlay{ opacity:0 }
+
+    #stage{
+      position:relative; /* para overlay */
     }
 
     #message {
-      margin-top: 20px;
-      padding: 16px;
-      border-radius: 8px;
+      margin-top: 16px;
+      padding: 14px;
+      border-radius: 10px;
       font-size: 16px;
-      width: 90%;
+      width: 100%;
       max-width: 400px;
       text-align: center;
       display: none;
       transition: opacity 0.4s ease-in-out;
     }
-
-    .success {
-      background-color: #065f46; /* verde oscuro */
-      color: #d1fae5; /* verde claro */
-      border: 1px solid #10b981;
-    }
-
-    .error {
-      background-color: #7f1d1d; /* rojo oscuro */
-      color: #fee2e2; /* rojo claro */
-      border: 1px solid #f87171;
-    }
-
-    .fade-in {
-      opacity: 1;
-    }
+    .success { background-color: var(--ok-bg); color: var(--ok-fg); border: 1px solid var(--ok-bd); }
+    .error   { background-color: var(--err-bg); color: var(--err-fg); border: 1px solid var(--err-bd); }
+    .fade-in { opacity: 1; }
   </style>
 </head>
 <body>
   <h1>Registro de Asistencia</h1>
-  <div id="qr-reader"></div>
+
+  <div class="toolbar">
+    <button id="toggle-camera" title="Cambiar entre frontal y trasera">Usar cámara trasera</button>
+    <button id="toggle-overlay" title="Mostrar/ocultar overlay sutil (anti burn-in)">Overlay: ON</button>
+  </div>
+
+  <div id="stage" class="">
+    <div id="qr-wrap">
+      <div id="qr-reader"></div>
+    </div>
+    <div id="anti-burn-overlay"></div>
+  </div>
+
   <div id="message"></div>
 
   <script>
+    // ---- Estado de cámara y scanner
+    let currentFacingMode = "user"; // Frontal por defecto
+    let html5QrCode = null;
+    let wakeLock = null;
+
     const messageDiv = document.getElementById("message");
+    const qrWrap = document.getElementById("qr-wrap");
+    const stage = document.getElementById("stage");
+    const overlay = document.getElementById("anti-burn-overlay");
+    const toggleBtn = document.getElementById("toggle-camera");
+    const toggleOverlayBtn = document.getElementById("toggle-overlay");
 
-    const hideMessage = () => {
-      messageDiv.style.display = "none";
-    };
-
+    // ---- Utilidades de mensajes
+    const hideMessage = () => { messageDiv.style.display = "none"; };
     const showMessage = (htmlContent, isSuccess = true) => {
       messageDiv.innerHTML = htmlContent;
       messageDiv.className = (isSuccess ? "success" : "error") + " fade-in";
       messageDiv.style.display = "block";
     };
 
-    const startScanner = () => {
-      const html5QrCode = new Html5Qrcode("qr-reader");
+    // ---- Anti burn-in: pixel-shift aleatorio en inactividad
+    let antiBurnInterval = null;
+    let lastActivityTs = Date.now();
 
-      html5QrCode.start(
-        { facingMode: "environment" },
-        { fps: 10, qrbox: { width: 250, height: 250 } },
-        async (decodedText, decodedResult) => {
-          await html5QrCode.stop();
+    function randomShift(px=4){
+      const x = (Math.random()*px*2 - px).toFixed(1);
+      const y = (Math.random()*px*2 - px).toFixed(1);
+      qrWrap.style.transform = `translate(${x}px, ${y}px)`;
+    }
 
-          if (!decodedText.startsWith("https://api-sipe.com/preAssistance/")) {
-            showMessage("❌ QR inválido. URL no reconocida.", false);
-            setTimeout(() => {
-              hideMessage();
-              startScanner();
-            }, 3000);
-            return;
-          }
+    function resetShift(){ qrWrap.style.transform = "translate(0px,0px)"; }
 
-          try {
-            const response = await fetch(decodedText, { method: "POST" });
+    function markActivity(){
+      lastActivityTs = Date.now();
+      resetShift();
+    }
 
-            if (response.ok) {
-              const data = await response.json();
+    function startAntiBurn(){
+      stopAntiBurn();
+      antiBurnInterval = setInterval(() => {
+        const idleSec = (Date.now() - lastActivityTs)/1000;
+        // Tras 30s sin actividad, empezamos a "mover" ligeramente
+        if (idleSec > 30){
+          randomShift(5);
+        } else {
+          resetShift();
+        }
+      }, 8000); // cada 8s un microdesplazamiento
+    }
+    function stopAntiBurn(){
+      if (antiBurnInterval){ clearInterval(antiBurnInterval); antiBurnInterval = null; }
+      resetShift();
+    }
 
-              const employeeId = data.employeeId || "Desconocido";
-              const fecha = data.date || new Date().toLocaleDateString("es-MX");
-              const hora = data.checkIn?.split(".")[0] || new Date().toLocaleTimeString("es-MX");
+    // ---- Wake Lock (mantener pantalla activa; no evita burn-in, pero es útil en kiosko)
+    async function requestWakeLock(){
+      try{
+        if ('wakeLock' in navigator){
+          wakeLock = await navigator.wakeLock.request('screen');
+          wakeLock.addEventListener('release', ()=>{ /* opcional: log */ });
+        }
+      } catch(e){ /* puede fallar si el SO/buscador no lo permite */ }
+    }
+    // Volver a solicitar al recuperar visibilidad
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && wakeLock === null) requestWakeLock();
+    });
 
-              const mensajeHTML = `
-                ✅ Asistencia registrada con éxito<br/>
-                👤 ID empleado: <strong>${employeeId}</strong><br/>
-                📅 Fecha: <strong>${fecha}</strong><br/>
-                🕒 Hora de entrada: <strong>${hora}</strong>
-              `;
+    // ---- Scanner
+    async function startScanner(){
+      // Si ya existe, detener antes de reiniciar
+      if (html5QrCode){
+        try { await html5QrCode.stop(); } catch(e){}
+        html5QrCode.clear();
+      }
+      html5QrCode = new Html5Qrcode("qr-reader");
 
-              showMessage(mensajeHTML, true);
+      try{
+        await html5QrCode.start(
+          { facingMode: currentFacingMode }, // "user" frontal, "environment" trasera
+          { fps: 10, qrbox: { width: 250, height: 250 } },
+          async (decodedText, decodedResult) => {
+            markActivity(); // actividad -> resetea pixel shift
+            await html5QrCode.stop();
 
-              setTimeout(() => {
-                hideMessage();
-                startScanner();
-              }, 2000);
-            } else {
-              const errorData = await response.json();
-              showMessage("❌ Error: " + (errorData.message || "No se pudo registrar"), false);
-              setTimeout(() => {
-                hideMessage();
-                startScanner();
-              }, 4000);
+            if (!decodedText.startsWith("https://api-sipe.com/preAssistance/")) {
+              showMessage("❌ QR inválido. URL no reconocida.", false);
+              setTimeout(() => { hideMessage(); startScanner(); }, 3000);
+              return;
             }
 
-          } catch (error) {
-            showMessage("❌ Error de conexión con el servidor", false);
-            setTimeout(() => {
-              hideMessage();
-              startScanner();
-            }, 4000);
-          }
-        }
-      );
-    };
+            try {
+              const response = await fetch(decodedText, { method: "POST" });
 
-    startScanner();
+              if (response.ok) {
+                const data = await response.json();
+
+                const employeeId = data.employeeId || "Desconocido";
+                const fecha = data.date || new Date().toLocaleDateString("es-MX");
+                const hora = data.checkIn?.split(".")[0] || new Date().toLocaleTimeString("es-MX");
+
+                const mensajeHTML = `
+                  ✅ Asistencia registrada con éxito<br/>
+                  👤 ID empleado: <strong>${employeeId}</strong><br/>
+                  📅 Fecha: <strong>${fecha}</strong><br/>
+                  🕒 Hora de entrada: <strong>${hora}</strong>
+                `;
+                showMessage(mensajeHTML, true);
+
+                setTimeout(() => { hideMessage(); startScanner(); }, 2000);
+              } else {
+                let errorText = "No se pudo registrar";
+                try { const errorData = await response.json(); errorText = errorData.message || errorText; } catch(_){}
+                showMessage("❌ Error: " + errorText, false);
+                setTimeout(() => { hideMessage(); startScanner(); }, 4000);
+              }
+            } catch (error) {
+              showMessage("❌ Error de conexión con el servidor", false);
+              setTimeout(() => { hideMessage(); startScanner(); }, 4000);
+            }
+          }
+        );
+      } catch(err){
+        showMessage("❌ No se pudo iniciar la cámara. Permisos o dispositivo no disponible.", false);
+      }
+    }
+
+    // ---- Controles UI
+    toggleBtn.addEventListener('click', async () => {
+      currentFacingMode = (currentFacingMode === "user") ? "environment" : "user";
+      toggleBtn.textContent = currentFacingMode === "user" ? "Usar cámara trasera" : "Usar cámara frontal";
+      markActivity();
+      await startScanner();
+    });
+
+    let overlayOn = true;
+    toggleOverlayBtn.addEventListener('click', () => {
+      overlayOn = !overlayOn;
+      stage.classList.toggle('overlay-hidden', !overlayOn);
+      toggleOverlayBtn.textContent = `Overlay: ${overlayOn ? 'ON' : 'OFF'}`;
+      markActivity();
+    });
+
+    // Actividad del usuario = reset de anti burn-in
+    ['touchstart','touchmove','click','mousemove','keydown'].forEach(evt=>{
+      window.addEventListener(evt, markActivity, {passive:true});
+    });
+
+    // ---- Inicio
+    (async function init(){
+      await requestWakeLock();
+      startAntiBurn();
+      stage.classList.remove('overlay-hidden'); // overlay activo por defecto
+      await startScanner();
+    })();
   </script>
 </body>
 </html>
