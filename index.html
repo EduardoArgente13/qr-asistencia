@@ -7,61 +7,74 @@
   <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
   <style>
     :root{
-      --bg:#0d0d0d;
-      --fg:#f3f4f6;
-      --card:#1f2937;
-      --shadow:rgba(255,255,255,0.08);
+      --bg:#0d0d0d; --fg:#f3f4f6; --card:#1f2937; --shadow:rgba(255,255,255,0.08);
       --ok-bg:#065f46; --ok-fg:#d1fae5; --ok-bd:#10b981;
       --err-bg:#7f1d1d; --err-fg:#fee2e2; --err-bd:#f87171;
     }
     *{box-sizing:border-box}
-    body {
+    body{
       font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-      background-color: var(--bg);
-      color: var(--fg);
-      margin: 0;
-      padding: 0 16px 40px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      min-height: 100vh;
-      -webkit-tap-highlight-color: transparent;
+      background:var(--bg); color:var(--fg);
+      margin:0; padding:0 16px 40px;
+      display:flex; flex-direction:column; align-items:center; min-height:100vh;
+      -webkit-tap-highlight-color:transparent;
     }
-    h1 {
-      color: #f9fafb;
-      margin: 24px 0 8px;
-      font-size: 28px;
-      text-align:center;
-    }
+    h1{ color:#f9fafb; margin:24px 0 8px; font-size:28px; text-align:center; }
 
-    .toolbar{
-      display:flex; gap:8px; flex-wrap:wrap; justify-content:center;
-      margin-top: 8px;
-    }
+    .toolbar{ display:flex; gap:8px; flex-wrap:wrap; justify-content:center; margin-top:8px; }
     button{
       background:#111827; color:#e5e7eb; border:1px solid #374151;
       padding:10px 14px; border-radius:10px; cursor:pointer;
       box-shadow:0 2px 8px var(--shadow);
-      transition:transform .06s ease, background .2s ease, border-color .2s ease;
+      transition:transform .06s ease, background .2s, border-color .2s;
     }
     button:active{ transform:scale(0.98) }
     button:hover{ background:#0b1220; border-color:#4b5563 }
 
+    /* Contenedor del lector (cuadrado) */
+    #stage{ position:relative; width: 340px; margin-top: 16px; }
     #qr-wrap{
-      width: 320px;
-      margin-top: 16px;
-      border-radius: 12px;
-      overflow: hidden;
-      box-shadow: 0 8px 24px var(--shadow);
-      background-color: var(--card);
-      /* el movimiento anti burn-in aplica sobre este contenedor */
+      width: 340px; height: 340px;  /* CUADRADO */
+      border-radius: 14px; overflow: hidden;
+      box-shadow: 0 8px 24px var(--shadow); background:var(--card);
       will-change: transform;
+      position: relative;
     }
-    #qr-reader{ width: 100%; height: 320px }
+    #qr-reader{ width:100%; height:100%; }
 
-    /* Overlay sutil para evitar zonas estáticas con alto contraste */
+    /* Máscara oscura con "ventana" cuadrada en el centro */
+    .mask{
+      pointer-events:none; position:absolute; inset:0;
+      /* Hacemos un recorte cuadrado (ventana) con CSS mask */
+      --box: 260px; /* tamaño de la ventana de scan */
+      --bx: calc((100% - var(--box))/2);
+      --by: calc((100% - var(--box))/2);
+      /* Fondo oscuro */
+      background: rgba(0,0,0,.45);
+      /* Creamos un hueco cuadrado transparente */
+      -webkit-mask:
+        linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+      mask:
+        linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+      -webkit-mask-composite: xor;
+              mask-composite: exclude;
+      padding: var(--by) var(--bx);
+      border-radius: 14px;
+    }
+
+    /* Borde guía del cuadro de escaneo */
+    .qr-frame{
+      position:absolute; width: var(--box); height: var(--box);
+      left: var(--bx); top: var(--by);
+      border: 2px solid rgba(255,255,255,0.85);
+      border-radius: 10px;
+      box-shadow: 0 0 0 1px rgba(0,0,0,0.2) inset;
+      pointer-events:none;
+    }
+
+    /* Overlay sutil anti burn-in encima de todo el stage */
     #anti-burn-overlay{
-      position:absolute; inset:0; pointer-events:none; opacity:.08;
+      position:absolute; inset:-8px; pointer-events:none; opacity:.08;
       background: radial-gradient(120% 120% at 0% 0%, #fff 0%, transparent 60%) ,
                   radial-gradient(120% 120% at 100% 100%, #fff 0%, transparent 60%);
       mix-blend-mode: soft-light;
@@ -69,24 +82,13 @@
     }
     .overlay-hidden #anti-burn-overlay{ opacity:0 }
 
-    #stage{
-      position:relative; /* para overlay */
+    #message{
+      margin-top:16px; padding:14px; border-radius:10px; font-size:16px;
+      width:100%; max-width:400px; text-align:center; display:none; transition:opacity .4s;
     }
-
-    #message {
-      margin-top: 16px;
-      padding: 14px;
-      border-radius: 10px;
-      font-size: 16px;
-      width: 100%;
-      max-width: 400px;
-      text-align: center;
-      display: none;
-      transition: opacity 0.4s ease-in-out;
-    }
-    .success { background-color: var(--ok-bg); color: var(--ok-fg); border: 1px solid var(--ok-bd); }
-    .error   { background-color: var(--err-bg); color: var(--err-fg); border: 1px solid var(--err-bd); }
-    .fade-in { opacity: 1; }
+    .success{ background:var(--ok-bg); color:var(--ok-fg); border:1px solid var(--ok-bd); }
+    .error  { background:var(--err-bg); color:var(--err-fg); border:1px solid var(--err-bd); }
+    .fade-in{ opacity:1; }
   </style>
 </head>
 <body>
@@ -97,9 +99,12 @@
     <button id="toggle-overlay" title="Mostrar/ocultar overlay sutil (anti burn-in)">Overlay: ON</button>
   </div>
 
-  <div id="stage" class="">
+  <div id="stage">
     <div id="qr-wrap">
       <div id="qr-reader"></div>
+      <!-- Máscara + marco de guía (cuadrados) -->
+      <div class="mask"></div>
+      <div class="qr-frame" style="--box:260px;"></div>
     </div>
     <div id="anti-burn-overlay"></div>
   </div>
@@ -107,8 +112,7 @@
   <div id="message"></div>
 
   <script>
-    // ---- Estado de cámara y scanner
-    let currentFacingMode = "user"; // Frontal por defecto
+    let currentFacingMode = "user"; // frontal por defecto
     let html5QrCode = null;
     let wakeLock = null;
 
@@ -119,7 +123,6 @@
     const toggleBtn = document.getElementById("toggle-camera");
     const toggleOverlayBtn = document.getElementById("toggle-overlay");
 
-    // ---- Utilidades de mensajes
     const hideMessage = () => { messageDiv.style.display = "none"; };
     const showMessage = (htmlContent, isSuccess = true) => {
       messageDiv.innerHTML = htmlContent;
@@ -127,57 +130,38 @@
       messageDiv.style.display = "block";
     };
 
-    // ---- Anti burn-in: pixel-shift aleatorio en inactividad
+    // Anti burn-in: micro desplazamiento en inactividad (>30s)
     let antiBurnInterval = null;
     let lastActivityTs = Date.now();
-
     function randomShift(px=4){
       const x = (Math.random()*px*2 - px).toFixed(1);
       const y = (Math.random()*px*2 - px).toFixed(1);
       qrWrap.style.transform = `translate(${x}px, ${y}px)`;
     }
-
     function resetShift(){ qrWrap.style.transform = "translate(0px,0px)"; }
-
-    function markActivity(){
-      lastActivityTs = Date.now();
-      resetShift();
-    }
-
+    function markActivity(){ lastActivityTs = Date.now(); resetShift(); }
     function startAntiBurn(){
       stopAntiBurn();
       antiBurnInterval = setInterval(() => {
         const idleSec = (Date.now() - lastActivityTs)/1000;
-        // Tras 30s sin actividad, empezamos a "mover" ligeramente
-        if (idleSec > 30){
-          randomShift(5);
-        } else {
-          resetShift();
-        }
-      }, 8000); // cada 8s un microdesplazamiento
+        if (idleSec > 30){ randomShift(5); } else { resetShift(); }
+      }, 8000);
     }
-    function stopAntiBurn(){
-      if (antiBurnInterval){ clearInterval(antiBurnInterval); antiBurnInterval = null; }
-      resetShift();
-    }
+    function stopAntiBurn(){ if (antiBurnInterval){ clearInterval(antiBurnInterval); antiBurnInterval = null; } resetShift(); }
 
-    // ---- Wake Lock (mantener pantalla activa; no evita burn-in, pero es útil en kiosko)
     async function requestWakeLock(){
       try{
         if ('wakeLock' in navigator){
           wakeLock = await navigator.wakeLock.request('screen');
-          wakeLock.addEventListener('release', ()=>{ /* opcional: log */ });
+          wakeLock.addEventListener('release', ()=>{});
         }
-      } catch(e){ /* puede fallar si el SO/buscador no lo permite */ }
+      } catch(e){}
     }
-    // Volver a solicitar al recuperar visibilidad
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible' && wakeLock === null) requestWakeLock();
     });
 
-    // ---- Scanner
     async function startScanner(){
-      // Si ya existe, detener antes de reiniciar
       if (html5QrCode){
         try { await html5QrCode.stop(); } catch(e){}
         html5QrCode.clear();
@@ -186,10 +170,16 @@
 
       try{
         await html5QrCode.start(
-          { facingMode: currentFacingMode }, // "user" frontal, "environment" trasera
-          { fps: 10, qrbox: { width: 250, height: 250 } },
+          { facingMode: currentFacingMode },
+          {
+            fps: 10,
+            qrbox: { width: 260, height: 260 }, // CUADRADO visible
+            aspectRatio: 1.0,                    // favorece preview más centrada
+            formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE ], // solo QR
+          },
           async (decodedText, decodedResult) => {
-            markActivity(); // actividad -> resetea pixel shift
+            markActivity();
+
             await html5QrCode.stop();
 
             if (!decodedText.startsWith("https://api-sipe.com/preAssistance/")) {
@@ -230,11 +220,11 @@
           }
         );
       } catch(err){
-        showMessage("❌ No se pudo iniciar la cámara. Permisos o dispositivo no disponible.", false);
+        showMessage("❌ No se pudo iniciar la cámara. Revisa permisos o dispositivo.", false);
       }
     }
 
-    // ---- Controles UI
+    // Controles UI
     toggleBtn.addEventListener('click', async () => {
       currentFacingMode = (currentFacingMode === "user") ? "environment" : "user";
       toggleBtn.textContent = currentFacingMode === "user" ? "Usar cámara trasera" : "Usar cámara frontal";
@@ -245,21 +235,19 @@
     let overlayOn = true;
     toggleOverlayBtn.addEventListener('click', () => {
       overlayOn = !overlayOn;
-      stage.classList.toggle('overlay-hidden', !overlayOn);
+      document.getElementById('stage').classList.toggle('overlay-hidden', !overlayOn);
       toggleOverlayBtn.textContent = `Overlay: ${overlayOn ? 'ON' : 'OFF'}`;
       markActivity();
     });
 
-    // Actividad del usuario = reset de anti burn-in
     ['touchstart','touchmove','click','mousemove','keydown'].forEach(evt=>{
       window.addEventListener(evt, markActivity, {passive:true});
     });
 
-    // ---- Inicio
     (async function init(){
       await requestWakeLock();
       startAntiBurn();
-      stage.classList.remove('overlay-hidden'); // overlay activo por defecto
+      document.getElementById('stage').classList.remove('overlay-hidden');
       await startScanner();
     })();
   </script>
